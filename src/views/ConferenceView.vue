@@ -1,6 +1,9 @@
 <template>
     <div class="conference">
-        <div class="conference__buttons buttons">
+        <div class="conference__video"
+             v-for="id in sources" 
+             :id="`user-${id}`"></div>
+        <div class="conference_buttons buttons">
             <q-btn @click="toggleVideo()"
                    round
                    size="xl"
@@ -34,6 +37,7 @@
                 isCameraOn: true,
                 userId: '',
                 roomNumber: '',
+                sources: [],
             }
         },
         methods: {
@@ -52,7 +56,7 @@
                 const player = document.getElementById(`user-${user.uid}`) ;
 
                 if (!player) {
-                    this.insertIntoContainer(user.uid)
+                    this.sources.push(user.uid);
                 }
 
                 if (mediaType === 'video'){
@@ -62,13 +66,12 @@
                 if (mediaType === 'audio'){
                     user.audioTrack.play();
                 }
+
+                await client.publish([localTracks[0], localTracks[1]]);
             },
 
             async handleUserLeft(user) {
-                let item = document.getElementById(user.uid);
-                if(item){
-                    item.remove();
-                }
+                this.sources = this.sources.filter(item => item !== user.uid);
             },
 
             async initLocal() {
@@ -76,7 +79,7 @@
                     width:{ min:640, ideal:1920, max:1920 },
                     height:{ min:480, ideal:1080, max:1080 }
                 }});
-                this.insertIntoContainer(this.userId);
+
                 localTracks[1].play(`user-${this.userId}`);
                 
                 await client.publish([localTracks[0], localTracks[1]]);
@@ -93,7 +96,7 @@
             },
 
             async leave() {
-                for (let i = 0; i < localTracks.length; i++){
+                for (let i = 0; localTracks.length > i; i++){
                     localTracks[i].stop()
                     localTracks[i].close()
                 }
@@ -114,27 +117,20 @@
                     all.onsuccess = () => {
                         const result = all.result[0];
                         this.userId = result.id;
+                        this.sources.push(this.userId);
                         this.initStreams();
                     };
                 };
-            },
-
-            insertIntoContainer(id) {
-                const player = `<div class="conference__video" id=user-${id}></div>`;
-                const container = document.getElementsByClassName('conference')[0];
-                container.insertAdjacentHTML('beforeend', player);
             },
         },
         created() {
             this.roomNumber = this.$route.params.id;
             this.loadDataFromDb();
         },
-
-        
     }
 </script>
 
-<style lang="scss">
+<style lang="scss" scoped>
     .conference {
         background-color: #edeef0;
         display: grid;
@@ -143,7 +139,7 @@
         &__video {
             margin: 0 auto;
 
-            div {
+            &:deep div {
                 border-radius: 50%;
             }
         }
