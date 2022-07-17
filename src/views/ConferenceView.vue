@@ -66,8 +66,6 @@
                 if (mediaType === 'audio'){
                     user.audioTrack.play();
                 }
-
-                await client.publish([localTracks[0], localTracks[1]]);
             },
 
             async handleUserLeft(user) {
