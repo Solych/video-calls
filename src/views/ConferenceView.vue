@@ -1,9 +1,6 @@
 <template>
     <div class="conference">
-        <div class="conference__video"
-             v-for="id in sources" 
-             :id="`user-${id}`"></div>
-        <div class="conference_buttons buttons">
+        <div class="conference__buttons buttons">
             <q-btn @click="toggleVideo()"
                    round
                    size="xl"
@@ -26,7 +23,8 @@
 
 <script>
     export const APP_ID = '19305c253e92402482791774613de11d';
-
+    let localTracks = [];
+    let client;
 
     export default {
         name: 'ConferenceView',
@@ -36,47 +34,76 @@
                 isCameraOn: true,
                 userId: '',
                 roomNumber: '',
-                client: null,
-                sources: [],
-                localTracks: [],
             }
         },
         methods: {
 
+            async initStreams() {
+                client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+                await client.join(APP_ID, this.roomNumber, null, this.userId);
+                await this.initLocal();
+
+                client.on('user-published', this.handleUserJoined);
+                client.on('user-left', this.handleUserLeft);
+            },
+
+            async handleUserJoined(user, mediaType) {
+                await client.subscribe(user, mediaType);
+                const player = document.getElementById(`user-${user.uid}`) ;
+
+                if (!player) {
+                    this.insertIntoContainer(user.uid)
+                }
+
+                if (mediaType === 'video'){
+                    user.videoTrack.play(`user-${user.uid}`);
+                }
+
+                if (mediaType === 'audio'){
+                    user.audioTrack.play();
+                }
+            },
+
+            async handleUserLeft(user) {
+                let item = document.getElementById(user.uid);
+                if(item){
+                    item.remove();
+                }
+            },
+
+            async initLocal() {
+                localTracks = await AgoraRTC.createMicrophoneAndCameraTracks({}, { encoderConfig: {
+                    width:{ min:640, ideal:1920, max:1920 },
+                    height:{ min:480, ideal:1080, max:1080 }
+                }});
+                this.insertIntoContainer(this.userId);
+                localTracks[1].play(`user-${this.userId}`);
+                
+                await client.publish([localTracks[0], localTracks[1]]);
+            },
+
             toggleMic() {
-                this.localTracks[0].setMuted(this.isMicOn ? true : false);
+                localTracks[0].setMuted(this.isMicOn ? true : false);
                 this.isMicOn = !this.isMicOn;
             },
 
             toggleVideo() {
-                this.localTracks[1].setMuted(this.isCameraOn ? true : false);
+                localTracks[1].setMuted(this.isCameraOn ? true : false);
                 this.isCameraOn = !this.isCameraOn;
             },
 
             async leave() {
-                for (let i = 0; localTracks.length > i; i++){
-                    this.localTracks[i].stop()
-                    this.localTracks[i].close()
+                for (let i = 0; i < localTracks.length; i++){
+                    localTracks[i].stop()
+                    localTracks[i].close()
                 }
 
-                await this.client.unpublish([this.localTracks[0], this.localTracks[1]]);
+                await client.unpublish([localTracks[0], localTracks[1]]);
                 this.$router.push('/');
             },
 
             routeToSettings() {
                 this.$router.push('/settings');
-            },
-
-            async initStreams() {
-                this.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-                if (!this.userId) {
-                    this.userId = Math.round(Math.random() * 10000);
-                }
-                await this.client.join(APP_ID, this.roomNumber, null, this.userId);
-                await this.initLocal();
-
-                this.client.on('user-published', this.handleUserJoined);
-                this.client.on('user-left', this.handleUserLeft);
             },
 
             loadDataFromDb() {
@@ -87,51 +114,27 @@
                     all.onsuccess = () => {
                         const result = all.result[0];
                         this.userId = result.id;
-                        this.sources.push(this.userId);
                         this.initStreams();
                     };
                 };
             },
 
-            async initLocal() {
-                this.localTracks = await AgoraRTC.createMicrophoneAndCameraTracks({}, { encoderConfig: {
-                    width:{ min:640, ideal:1920, max:1920 },
-                    height:{ min:480, ideal:1080, max:1080 }
-                }});
-                this.localTracks[1].play(`user-${this.userId}`);
-                
-                await this.client.publish([this.localTracks[0], this.localTracks[1]]);
-            },
-
-            async handleUserJoined(user, mediaType) {
-                await this.client.subscribe(user, mediaType);
-                const player = document.getElementById(`user-${user.uid}`) ;
-
-                if (!player) {
-                    this.sources.push(user.uid);
-                }
-
-                if (mediaType === 'video'){
-                    user.videoTrack.play(`user-${user.uid}`)
-                }
-
-                if (mediaType === 'audio'){
-                    user.audioTrack.play()
-                }
-            },
-
-            async handleUserLeft(user) {
-                this.sources = this.sources.filter(item => item !== user.uid);
+            insertIntoContainer(id) {
+                const player = `<div class="conference__video" id=user-${id}></div>`;
+                const container = document.getElementsByClassName('conference')[0];
+                container.insertAdjacentHTML('beforeend', player);
             },
         },
         created() {
             this.roomNumber = this.$route.params.id;
             this.loadDataFromDb();
         },
+
+        
     }
 </script>
 
-<style lang="scss" scoped>
+<style lang="scss">
     .conference {
         background-color: #edeef0;
         display: grid;
@@ -140,7 +143,7 @@
         &__video {
             margin: 0 auto;
 
-            &:deep div {
+            div {
                 border-radius: 50%;
             }
         }
