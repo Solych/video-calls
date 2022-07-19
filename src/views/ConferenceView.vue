@@ -1,7 +1,7 @@
 <template>
     <div class="conference">
         <div class="conference__video"
-             v-for="id in sources" 
+             v-for="id in sources"
              :id="`user-${id}`"></div>
         <div class="conference_buttons buttons">
             <q-btn @click="toggleVideo()"
@@ -24,39 +24,55 @@
     </div>
 </template>
 
-<script>
+<script lang="ts">
+    import { defineComponent, ref, onBeforeMount } from 'vue';
+    import router from '@/router';
+    import { useRoute } from 'vue-router';
     export const APP_ID = '19305c253e92402482791774613de11d';
-    let localTracks = [];
-    let client;
+    let localTracks: any[] = [];
+    let client: any = null;
 
-    export default {
+    export default defineComponent({
         name: 'ConferenceView',
-        data() {
-            return {
-                isMicOn: true,
-                isCameraOn: true,
-                userId: '',
-                roomNumber: '',
-                sources: [],
-            }
-        },
-        methods: {
 
-            async initStreams() {
+        setup() {
+            const route = useRoute();
+            let userId = ref(null);
+            let roomNumber = ref('');
+            let isMicOn = ref(true);
+            let isCameraOn = ref(true);
+            let sources = ref([]);
+            let db = <IDBDatabase><unknown>ref();
+
+            const loadDataFromDb = () => { // to create a service for not copy-pasting
+                const openDB = indexedDB.open('webrtc', 1);
+                openDB.onsuccess = () => {
+                    db = openDB.result;
+                    const all = db.transaction('userInfo', 'readonly').objectStore('userInfo').getAll();
+                    all.onsuccess = () => {
+                        const result = all.result[0];
+                        userId.value = result.id;
+                        sources.value.push(<never>result.id);
+                        initStreams();
+                    };
+                };
+            };
+
+            const initStreams = async() => {
                 client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-                await client.join(APP_ID, this.roomNumber, null, this.userId);
-                await this.initLocal();
+                await client.join(APP_ID, roomNumber.value, null, userId.value);
+                await initLocal();
 
-                client.on('user-published', this.handleUserJoined);
-                client.on('user-left', this.handleUserLeft);
-            },
+                client.on('user-published', handleUserJoined);
+                client.on('user-left', handleUserLeft);
+            };
 
-            async handleUserJoined(user, mediaType) {
+            const handleUserJoined = async(user: any, mediaType: any) => {
                 await client.subscribe(user, mediaType);
                 const player = document.getElementById(`user-${user.uid}`) ;
 
                 if (!player) {
-                    this.sources.push(user.uid);
+                    sources.value.push(<never>user.uid);
                 }
 
                 if (mediaType === 'video'){
@@ -66,66 +82,60 @@
                 if (mediaType === 'audio'){
                     user.audioTrack.play();
                 }
-            },
+            };
 
-            async handleUserLeft(user) {
-                this.sources = this.sources.filter(item => item !== user.uid);
-            },
+            const handleUserLeft = async (user: any) => sources.value = sources.value.filter(item => item !== user.uid);
 
-            async initLocal() {
+            const initLocal = async () => {
                 localTracks = await AgoraRTC.createMicrophoneAndCameraTracks({}, { encoderConfig: {
-                    width:{ min:640, ideal:1920, max:1920 },
-                    height:{ min:480, ideal:1080, max:1080 }
+                        width:{ min:640, ideal:1920, max:1920 },
+                        height:{ min:480, ideal:1080, max:1080 }
                 }});
 
-                localTracks[1].play(`user-${this.userId}`);
-                
+                localTracks[1].play(`user-${userId.value}`);
+
                 await client.publish([localTracks[0], localTracks[1]]);
-            },
+            };
 
-            toggleMic() {
-                localTracks[0].setMuted(this.isMicOn ? true : false);
-                this.isMicOn = !this.isMicOn;
-            },
-
-            toggleVideo() {
-                localTracks[1].setMuted(this.isCameraOn ? true : false);
-                this.isCameraOn = !this.isCameraOn;
-            },
-
-            async leave() {
-                for (let i = 0; localTracks.length > i; i++){
-                    localTracks[i].stop()
-                    localTracks[i].close()
+            const leave = async () => {
+                for (let i = 0; i < localTracks.length; i++) {
+                    localTracks[i].stop();
+                    localTracks[i].close();
                 }
 
                 await client.unpublish([localTracks[0], localTracks[1]]);
-                this.$router.push('/');
-            },
+                router.push('/');
+            };
 
-            routeToSettings() {
-                this.$router.push('/settings');
-            },
+            const toggleMic = () => {
+                localTracks[0]?.setMuted(isMicOn.value);
+                isMicOn.value = !isMicOn.value;
+            };
 
-            loadDataFromDb() {
-                const openDB = indexedDB.open('webrtc', 1);
-                openDB.onsuccess = () => {
-                    this.db = openDB.result;
-                    const all = this.db.transaction('userInfo', 'readonly').objectStore('userInfo').getAll();
-                    all.onsuccess = () => {
-                        const result = all.result[0];
-                        this.userId = result.id;
-                        this.sources.push(this.userId);
-                        this.initStreams();
-                    };
-                };
-            },
+            const toggleVideo = () => {
+                localTracks[1]?.setMuted(isCameraOn.value);
+                isCameraOn.value = !isCameraOn.value;
+            };
+
+            const routeToSettings = () => router.push('/settings');
+
+            onBeforeMount(() => {
+                roomNumber.value = <string>route.params.id;
+                loadDataFromDb();
+            });
+
+            return {
+                isMicOn,
+                isCameraOn,
+                sources,
+
+                leave,
+                toggleMic,
+                toggleVideo,
+                routeToSettings,
+            };
         },
-        created() {
-            this.roomNumber = this.$route.params.id;
-            this.loadDataFromDb();
-        },
-    }
+    });
 </script>
 
 <style lang="scss" scoped>
@@ -137,7 +147,7 @@
         &__video {
             margin: 0 auto;
 
-            &:deep div {
+            &:deep(div) {
                 border-radius: 50%;
             }
         }
