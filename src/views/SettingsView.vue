@@ -52,7 +52,7 @@
 
         setup() {
 
-            let username = ref(null);
+            let username = ref('');
             let image = ref(null);
             let imageUrl = ref('');
             let userId = ref(null);

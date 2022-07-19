@@ -55,8 +55,8 @@
 
         setup() {
             let db = <IDBDatabase><unknown>ref();
-            let username = ref(null);
-            let avatar = ref(null);
+            let username = ref('');
+            let avatar = ref('');
             let isWantConnect = ref(false);
             let roomNumber = ref(null);
 

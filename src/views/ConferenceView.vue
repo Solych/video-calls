@@ -31,6 +31,7 @@
     export const APP_ID = '19305c253e92402482791774613de11d';
     let localTracks: any[] = [];
     let client: any = null;
+    declare const AgoraRTC: any;
 
     export default defineComponent({
         name: 'ConferenceView',
