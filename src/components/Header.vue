@@ -8,8 +8,8 @@
         </q-btn>
         <div @click="routeToSettings()"
              class="toolbar__avatar">
-            <Avatar :avatar="this.avatar"
-                    :nickName="this.nickName"/>
+            <Avatar :avatar="avatar"
+                    :username="username"/>
         </div>
 
         <q-dialog v-model="isWantConnect">
@@ -24,7 +24,6 @@
                                  v-model="roomNumber"
                                  label="Input a room number"/>
                     </q-card-section>
-
                 </div>
 
                 <div class="modal__approve-button">
@@ -42,70 +41,68 @@
     </q-toolbar>
 </template>
 
-<script>
+<script lang="ts">
     import Avatar from './Avatar.vue';
+    import { defineComponent, onMounted, onBeforeMount, ref } from 'vue';
+    import emitter from '@/service/emitter';
+    import router from '@/router';
 
-    export default {
-        name: "Header.vue",
+    export default defineComponent({
+        name: 'Header.vue',
         components: {
             Avatar,
         },
 
-        created() {
-            this.loadInfoFromDb();
-        },
+        setup() {
+            let db = <IDBDatabase><unknown>ref();
+            let username = ref(null);
+            let avatar = ref(null);
+            let isWantConnect = ref(false);
+            let roomNumber = ref(null);
 
-        methods: {
-            routeToSettings() {
-                this.$router.push('/settings');
-            },
+            const routeToSettings = () => router.push('/settings');
 
-            loadInfoFromDb() {
+            const routeToLobby = () => router.push({ name: 'conference', params: { id: roomNumber.value }});
+
+            const loadInfoFromDb = () => {
                 const openDB = indexedDB.open('webrtc', 1);
 
                 openDB.onupgradeneeded = () => {
-                    this.db = openDB.result;
-                    if (!this.db.objectStoreNames.contains('userInfo')) {
-                        this.db.createObjectStore('userInfo', {keyPath: 'id'});
+                    db = openDB.result;
+                    if (!db.objectStoreNames.contains('userInfo')) {
+                        db.createObjectStore('userInfo', { keyPath: 'id' });
                     }
                 };
 
                 openDB.onsuccess = () => {
-                    this.db = openDB.result;
-                    if (this.db.objectStoreNames.contains('userInfo')) {
-                        const all = this.db.transaction('userInfo', 'readonly').objectStore('userInfo').getAll();
+                    db = openDB.result;
+                    if (db.objectStoreNames.contains('userInfo')) {
+                        const all = db.transaction('userInfo', 'readonly').objectStore('userInfo').getAll();
                         all.onsuccess = () => {
                             const result = all.result[0];
-                            this.nickName = result?.nickName;
-                            this.avatar = result?.picture;
+                            username.value = result?.username;
+                            avatar.value = result?.picture;
                         };
                     }
-                    
                 };
-            },
-
-            routeToLobby() {
-                this.$router.push({
-                    name: 'conference',
-                    params: {id: this.roomNumber}
-                });
-            }
-        },
-
-        mounted() {
-            this.emitter.on("isShouldUpdateInfo", () => this.loadInfoFromDb());
-        },
-
-        data() {
-            return {
-                db: null,
-                nickName: '',
-                avatar: '',
-                isWantConnect: false,
-                roomNumber: '',
             };
-        }
-    }
+
+            onBeforeMount(() => loadInfoFromDb()) ;
+
+            onMounted(() => emitter.on('isShouldUpdateInfo', () => loadInfoFromDb()));
+
+            return {
+                username,
+                avatar,
+                isWantConnect,
+                roomNumber,
+
+                routeToSettings,
+                routeToLobby,
+            };
+        },
+
+    });
 </script>
 
 <style lang="scss" scoped>

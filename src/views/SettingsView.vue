@@ -4,7 +4,7 @@
         <div class="container__settings-form settings-form">
             <div class="settings-form__name">
                 <q-input outlined
-                         v-model="nickName"
+                         v-model="username"
                          label="Type your name"/>
             </div>
             <div class="settings-form__image">
@@ -20,7 +20,7 @@
                     </template>
                 </q-file>
             </div>
-            <div class="settings-from__approve">
+            <div class="settings-form__approve">
                 <q-btn color="primary"
                        @click="save()"
                        icon-right="check"
@@ -28,108 +28,116 @@
             </div>
         </div>
         <div class="settings-form-container__preview preview">
-            <span v-if="imageUrl || nickName"
+            <span v-if="imageUrl || username"
                   class="preview__description">Preview</span>
             <Avatar :avatar="imageUrl"
-                    :nickName="nickName"/>
+                    :username="username"/>
         </div>
 
     </div>
 </template>
 
-<script>
-    import {useQuasar} from 'quasar'
+<script lang="ts">
+    import { useQuasar } from 'quasar'
     import Avatar from '../components/Avatar.vue';
+    import { defineComponent, ref, onBeforeMount } from 'vue';
+    import emitter from '@/service/emitter';
 
 
-    export default {
-        name: "SettingsView.vue",
+    export default defineComponent({
+        name: 'SettingsView.vue',
         components: {
             Avatar,
         },
-        data() {
-            return {
-                nickName: '',
-                db: null,
-                userId: null,
-                imageUrl: null,
-                image: null,
-                $q: useQuasar(),
-            }
-        },
 
-        created() {
-            const openDB = indexedDB.open('webrtc', 1);
-            openDB.onsuccess = () => {
-                this.db = openDB.result;
-                const all = this.db.transaction('userInfo', 'readonly').objectStore('userInfo').getAll();
-                all.onsuccess = () => {
-                    const result = all.result[0];
-                    this.nickName = result.nickName;
-                    this.userId = result.id;
-                    this.imageUrl = result.picture;
-                };
-            }
-        },
+        setup() {
 
-        methods: {
-            removeImage() {
-                this.image = null;
-                this.imageUrl = null;
-            },
+            let username = ref(null);
+            let image = ref(null);
+            let imageUrl = ref('');
+            let userId = ref(null);
+            let db = <IDBDatabase><unknown>ref(null);
+            const $q = useQuasar();
 
-            save() {
+            const removeImage = () => {
+                image.value = null;
+                imageUrl.value = '';
+            };
+
+            const save = () => {
                 const userData = {
-                    id: this.userId,
-                    picture: this.imageUrl,
-                    nickName: this.nickName,
+                    id: userId.value,
+                    picture: imageUrl.value,
+                    username: username.value,
                 };
-                const data = this.db.transaction('userInfo', 'readwrite').objectStore('userInfo');
-                const deletion = data.delete(this.userId);
+                const data = db.transaction('userInfo', 'readwrite').objectStore('userInfo');
+                const deletion = data.delete(<IDBValidKey><unknown>userId.value);
                 const adding = data.add(userData);
 
                 deletion.onerror = () => console.log(deletion);
 
-
                 adding.onerror = () => {
-                    this.$q.notify({
+                    $q.notify({
                         message: 'Something goes wrong...',
                         color: 'red'
                     });
                 };
 
                 adding.onsuccess = () => {
-                    this.$q.notify({
+                    $q.notify({
                         message: 'Saved!',
                         color: 'green'
                     });
 
-                    this.emitter.emit('isShouldUpdateInfo');
+                    emitter.emit('isShouldUpdateInfo');
                 }
 
-            },
+            };
 
-
-            updateFile() {
+            const updateFile = () => {
                 const interval = setInterval(() => {
-                    if (this.image) {
-                        this.imageUrl = URL.createObjectURL(this.image);
-                        this.generateBase64String();
+                    if (image) {
+                        imageUrl.value = URL.createObjectURL(<Blob><unknown>image.value);
+                        generateBase64String();
                         clearInterval(interval);
                     }
 
                 }, 200);
-            },
+            };
 
-            generateBase64String() {
+            const generateBase64String = () => {
                 const reader = new FileReader();
-                reader.readAsDataURL(this.image);
+                reader.readAsDataURL(<Blob><unknown>image.value);
                 reader.onload = () => {
-                    this.imageUrl = reader.result;
+                    imageUrl.value = <string>reader.result;
                 };
-            }
-        }
-    }
+            };
+
+            onBeforeMount(() => {
+                const openDB = indexedDB.open('webrtc', 1);
+                openDB.onsuccess = () => {
+                    db = openDB.result;
+                    const all = db.transaction('userInfo', 'readonly').objectStore('userInfo').getAll();
+                    all.onsuccess = () => {
+                        const result = all.result[0];
+                        username.value = result.username;
+                        userId.value = result.id;
+                        imageUrl.value = result.picture;
+                    };
+                }
+            });
+
+            return {
+                username,
+                imageUrl,
+                image,
+
+                removeImage,
+                save,
+                updateFile,
+            };
+        },
+    });
 </script>
 
 <style lang="scss" scoped>

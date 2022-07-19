@@ -1,84 +1,86 @@
 <template>
-    <div class="home">
+    <form class="home">
         <div class="home__description">Video calls</div>
-        <div class="home__input">
+        <div class="home__item">
             <q-input outlined
-                     v-model="nickName"
+                     v-model="username"
                      label="Login as..."/>
         </div>
-        <div class="home__input">
+        <div class="home__item">
             <q-input outlined
-                     v-model="existedRoom"
+                     v-model="room"
                      label="Join to the room number..."/>
         </div>
-        <div class="home__input">
+        <div class="home__item">
             <q-btn color="black"
                    @click="join()"
-                   :disabled="!nickName || !existedRoom"
+                   :disabled="!username || !room"
                    label="Login"/>
         </div>
-    </div>
+    </form>
 </template>
 
-<script>
-    export default {
-        name: "HomeView.vue",
-        created() {
-            const openDB = indexedDB.open('webrtc', 1);
+<script lang="ts">
+    import { defineComponent, ref, onBeforeMount } from 'vue';
+    import router from '@/router';
+    import emitter from '@/service/emitter';
 
-            openDB.onsuccess = () => {
-                this.db = openDB.result;
-                this.loadNickName();
-            }
-        },
+    export default defineComponent({
+        name: 'HomeView.vue',
 
-        data() {
-            return {
-                nickName: '',
-                newRoom: '',
-                existedRoom: '',
-                isWantOwnRoom: false,
-                db: null,
-                userId: null,
-            }
-        },
+        setup() {
+            let username = ref(null);
+            let room = ref(null);
+            let db = <IDBDatabase><unknown>ref();
+            let userId = ref(null);
 
-        methods: {
-            loadNickName() {
-                if (this.db.objectStoreNames.contains('userInfo')) {
-                    const all = this.db.transaction('userInfo', 'readonly').objectStore('userInfo').getAll();
+            const loadUsername = () => {
+                if (db.objectStoreNames.contains('userInfo')) {
+                    const all = db.transaction('userInfo', 'readonly').objectStore('userInfo').getAll();
                     all.onsuccess = () => {
                         const result = all.result[0];
-                        this.nickName = result?.nickName;
-                        this.userId = result?.id;
+                        username.value = result?.username;
+                        userId.value = result?.id;
                     };
                 }
-                
-            },
+            };
 
-            join() {
+            const join = () => {
                 const object = {
                     id: Math.round(Math.random() * 100000),
-                    nickName: this.nickName,
+                    username: username.value,
                     picture: null,
                 };
 
-
-                const data = this.db.transaction('userInfo', 'readwrite').objectStore('userInfo');
-                if (this.userId) {
-                    data.delete(this.userId);
+                const data = db.transaction('userInfo', 'readwrite').objectStore('userInfo');
+                if (userId.value) {
+                    data.delete(<IDBValidKey><unknown>userId.value);
                 }
 
-
                 data.add(object);
-                this.emitter.emit('isShouldUpdateInfo');
-                this.$router.push({
+                emitter.emit('isShouldUpdateInfo');
+                router.push({
                     name: 'conference',
-                    params: {id: this.existedRoom}
+                    params: { id: room.value }
                 });
-            },
-        }
-    }
+            };
+
+            onBeforeMount(() => {
+                const openDB = indexedDB.open('webrtc', 1);
+                openDB.onsuccess = () => {
+                    db = openDB.result;
+                    loadUsername();
+                };
+            });
+
+            return {
+                username,
+                room,
+
+                join
+            };
+        },
+    });
 </script>
 
 <style lang="scss" scoped>
@@ -100,7 +102,7 @@
         border-radius: 8px;
         width: 80%;
 
-        &__input {
+        &__item {
             width: 90%;
         }
 
